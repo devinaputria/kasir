@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:kasir_kebab/services/produk_service.dart'; // Ganti dengan path app-mu
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/sidebar.dart';
+import '../services/produk_service.dart'; // sesuaikan path
 
 class ProdukPage extends StatefulWidget {
   const ProdukPage({super.key});
@@ -14,12 +14,16 @@ class ProdukPage extends StatefulWidget {
   State<ProdukPage> createState() => _ProdukPageState();
 }
 
-class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateMixin {
-  final produkService = ProdukService();
+class _ProdukPageState extends State<ProdukPage>
+    with SingleTickerProviderStateMixin {
+  final ProdukService produkService = ProdukService();
   List<Map<String, dynamic>> allProducts = [];
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
 
+  /* -------------------------------------------------- */
+  /*  L I F E C Y C L E  &  H E L P E R                */
+  /* -------------------------------------------------- */
   @override
   void initState() {
     super.initState();
@@ -28,47 +32,39 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
     loadProduk();
   }
 
-  String getPublicUrl(String path) {
-    if (path.isEmpty) return '';
-    return Supabase.instance.client.storage.from('gambar').getPublicUrl(path);
-  }
-
-  Future<void> loadProduk() async {
-    try {
-      final data = await produkService.getAllProduk();
-      if (mounted) {
-        setState(() {
-          allProducts = data
-              .map(
-                (p) => {
-                  'id': p['id'],
-                  'name': p['nama'],
-                  'price': (p['harga'] as num).toStringAsFixed(0),
-                  'image': p['gambar_url'] ?? '',
-                  'category': p['kategori'] ?? 'Umum',
-                  'stok': p['stok_saat_ini'] ?? 0, // FIX: Tambah stok di map
-                },
-              )
-              .toList();
-        });
-        debugPrint('✅ Loaded ${allProducts.length} products');
-      }
-    } catch (e) {
-      debugPrint('❌ Load error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal load produk: $e')),
-        );
-      }
-    }
-  }
-
   @override
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
+
+  Future<void> loadProduk() async {
+    try {
+      final data = await produkService.getAllProduk();
+      if (!mounted) return;
+      setState(() {
+        allProducts = data.map((p) {
+          return {
+            'id': p['id'],
+            'name': p['nama'],
+            'price': (p['harga'] as num).toStringAsFixed(0),
+            'image': p['gambar_url'] ?? '',
+            'category': p['kategori'] ?? 'Umum',
+            'stok': p['stok_saat_ini'] ?? 0,
+          };
+        }).toList();
+      });
+      debugPrint('✅ Loaded ${allProducts.length} products');
+    } catch (e) {
+      debugPrint('❌ Load error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gagal load produk: $e')));
+    }
+  }
+
+  void _filterProducts() => setState(() {});
 
   List<Map<String, dynamic>> _getFilteredProducts(int index) {
     List<Map<String, dynamic>> filtered = [];
@@ -88,16 +84,60 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
 
     final query = _searchController.text.toLowerCase();
     if (query.isNotEmpty) {
-      filtered = filtered.where((p) => p['name'].toLowerCase().contains(query)).toList();
+      filtered =
+          filtered.where((p) => p['name'].toLowerCase().contains(query)).toList();
     }
-
     return filtered;
   }
 
-  void _filterProducts() {
-    if (mounted) setState(() {});
-  }
+  /* -------------------------------------------------- */
+  /*  W I D G E T   B U T T O N  (E D I T / D E L)     */
+  /* -------------------------------------------------- */
+  Widget _editButton(int index) => InkWell(
+        onTap: () => _showEditDialog(index),
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.orange[50],
+            border: Border.all(color: const Color(0xFFFF9C00)),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.edit, size: 14, color: Color(0xFFFF9C00)),
+              SizedBox(width: 4),
+              Text('Edit', style: TextStyle(fontSize: 11, color: Color(0xFFFF9C00))),
+            ],
+          ),
+        ),
+      );
 
+  Widget _deleteButton(int index) => InkWell(
+        onTap: () => _showDeleteDialog(index),
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.red[50],
+            border: Border.all(color: Colors.red),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.delete, size: 14, color: Colors.red),
+              SizedBox(width: 4),
+              Text('Delete', style: TextStyle(fontSize: 11, color: Colors.red)),
+            ],
+          ),
+        ),
+      );
+
+  /* -------------------------------------------------- */
+  /*  I M A G E   W I D G E T                          */
+  /* -------------------------------------------------- */
   Widget _buildImageWidget(String path) {
     if (path.isEmpty) {
       return Container(
@@ -105,108 +145,101 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
         child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 50),
       );
     }
-
-    final publicUrl = getPublicUrl(path);
     return Image.network(
-      publicUrl,
+      path,
       fit: BoxFit.cover,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return const Center(
-          child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF9C00))),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          color: Colors.grey[300],
-          child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 50),
-        );
-      },
+      loadingBuilder: (_, child, loadingProgress) =>
+          loadingProgress == null ? child : const Center(child: CircularProgressIndicator()),
+      errorBuilder: (_, __, ___) => Container(
+        color: Colors.grey[300],
+        child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 50),
+      ),
     );
   }
 
-  // VALIDASI FUNGSI: Cek nama required, harga/stok numeric & required
+  /* -------------------------------------------------- */
+  /*  V A L I D A S I                                  */
+  /* -------------------------------------------------- */
   bool _validateForm(String nama, String hargaStr, String stokStr) {
     if (nama.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nama harus diisi!')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Nama harus diisi!')));
       return false;
     }
-    final double? harga = double.tryParse(hargaStr);
+    final harga = double.tryParse(hargaStr);
     if (harga == null || harga <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Harga harus angka positif!')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Harga harus angka positif!')));
       return false;
     }
-    final int? stok = int.tryParse(stokStr);
+    final stok = int.tryParse(stokStr);
     if (stok == null || stok < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stok harus angka non-negatif!')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Stok harus angka non-negatif!')));
       return false;
     }
     return true;
   }
 
-  // CREATE: Add Produk
+  /* -------------------------------------------------- */
+  /*  A D D   P R O D U K                              */
+  /* -------------------------------------------------- */
   void _showAddDialog() {
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
-    final stokController = TextEditingController(text: '0'); // Default 0
-    String selectedCategory = 'Kebab';
-    Uint8List? pickedFileBytes;
+    final nameCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final stokCtrl = TextEditingController(text: '0');
+    String kategori = 'Kebab';
+
     File? pickedFile;
+    Uint8List? pickedBytes;
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      builder: (_) => StatefulBuilder(
+        builder: (_, setState) => AlertDialog(
+          scrollable: true,                 // ➜ dialog otomatis pakai SingleChildScrollView
+contentPadding: EdgeInsets.zero,  // ➜ kita kontrol sendiri padding-nya
           title: const Text('Tambah Produk'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk')),
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nama Produk')),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: priceController,
-                  decoration: const InputDecoration(labelText: 'Harga'),
-                  keyboardType: TextInputType.number,
-                ),
+                TextField(controller: priceCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga')),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: stokController,
-                  decoration: const InputDecoration(labelText: 'Stok'),
-                  keyboardType: TextInputType.number,
-                ),
+                TextField(controller: stokCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Stok')),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: selectedCategory,
+                  value: kategori,
                   items: ['Kebab', 'Burger'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                  onChanged: (val) => setDialogState(() => selectedCategory = val!),
+                  onChanged: (v) => setState(() => kategori = v!),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 ElevatedButton(
                   onPressed: () async {
                     final picker = ImagePicker();
-                    final picked = await picker.pickImage(source: ImageSource.gallery);
-                    if (picked != null) {
+                    final res = await picker.pickImage(source: ImageSource.gallery);
+                    if (res != null) {
                       if (kIsWeb) {
-                        pickedFileBytes = await picked.readAsBytes();
+                        pickedBytes = await res.readAsBytes();
                       } else {
-                        pickedFile = File(picked.path);
+                        pickedFile = File(res.path);
                       }
-                      setDialogState(() {});
+                      setState(() {});
                     }
                   },
                   child: const Text('Pilih Gambar (Opsional)'),
                 ),
                 const SizedBox(height: 8),
-                // Preview
-                if (pickedFileBytes != null)
-                  ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(pickedFileBytes!, height: 100, fit: BoxFit.cover))
+                if (pickedBytes != null)
+                  Image.memory(pickedBytes!, height: 100, fit: BoxFit.cover)
                 else if (pickedFile != null)
-                  ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(pickedFile!, height: 100, fit: BoxFit.cover))
+                  Image.file(pickedFile!, height: 100, fit: BoxFit.cover)
                 else
                   Container(
                     height: 100,
-                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(8)),
+                    color: Colors.grey[300],
                     child: const Icon(Icons.add_photo_alternate, color: Colors.grey, size: 50),
                   ),
               ],
@@ -216,15 +249,15 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
             ElevatedButton(
               onPressed: () async {
-                final nama = nameController.text.trim();
-                final hargaStr = priceController.text.trim();
-                final stokStr = stokController.text.trim();
+                final nama = nameCtrl.text.trim();
+                final hargaStr = priceCtrl.text.trim();
+                final stokStr = stokCtrl.text.trim();
                 if (!_validateForm(nama, hargaStr, stokStr)) return;
                 final harga = double.parse(hargaStr);
                 final stok = int.parse(stokStr);
                 try {
                   String? fileName;
-                  if (pickedFile != null || pickedFileBytes != null) {
+                  if (pickedFile != null || pickedBytes != null) {
                     fileName = pickedFile != null
                         ? '${DateTime.now().millisecondsSinceEpoch}_${pickedFile!.path.split('/').last}'
                         : '${DateTime.now().millisecondsSinceEpoch}.png';
@@ -233,16 +266,19 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
                     nama: nama,
                     harga: harga,
                     stokSaatIni: stok,
-                    kategori: selectedCategory,
-                    imageFile: pickedFile,
-                    imageBytes: pickedFileBytes,
+                    kategori: kategori,
+                    imageBytes: pickedBytes,
                     fileName: fileName,
                   );
-                  await loadProduk(); // Auto refresh
+                  if (!mounted) return;
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Produk ditambahkan!')));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('Produk ditambahkan!')));
+                  await loadProduk();
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal tambah: $e')));
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text('Gagal tambah: $e')));
                 }
               },
               child: const Text('Tambah'),
@@ -253,158 +289,111 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
     );
   }
 
-  // UPDATE: Edit Produk
+  /* -------------------------------------------------- */
+  /*  E D I T   P R O D U K                            */
+  /* -------------------------------------------------- */
   void _showEditDialog(int index) {
     final product = allProducts[index];
-    final nameController = TextEditingController(text: product['name']);
-    final priceController = TextEditingController(text: product['price']);
-    final stokController = TextEditingController(text: product['stok'].toString()); // FIX: Load stok
-    String selectedCategory = product['category'];
-    Uint8List? pickedFileBytes;
+    final nameCtrl = TextEditingController(text: product['name']);
+    final priceCtrl = TextEditingController(text: product['price']);
+    final stokCtrl = TextEditingController(text: product['stok'].toString());
+    String kategori = product['category'];
+
     File? pickedFile;
-    bool hasNewImage = false;
+    Uint8List? pickedBytes;
     bool removeImage = false;
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      builder: (_) => StatefulBuilder(
+        builder: (_, setState) => AlertDialog(
           title: const Text('Edit Produk'),
           content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nama Produk')),
-              const SizedBox(height: 8),
-              TextField(
-                controller: priceController,
-                decoration: const InputDecoration(labelText: 'Harga'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: stokController,
-                decoration: const InputDecoration(labelText: 'Stok'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: selectedCategory,
-                items: ['Kebab', 'Burger'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (val) => setDialogState(() => selectedCategory = val!),
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () async {
-                  final picker = ImagePicker();
-                  final picked = await picker.pickImage(source: ImageSource.gallery);
-                  if (picked != null) {
-                    if (kIsWeb) pickedFileBytes = await picked.readAsBytes();
-                    else pickedFile = File(picked.path);
-                    setDialogState(() {
-                      hasNewImage = true;
-                      removeImage = false;
-                    });
-                  }
-                },
-                child: const Text('Ganti Gambar (Opsional)'),
-              ),
-              const SizedBox(height: 8),
-              if (!hasNewImage && product['image'].isNotEmpty && !removeImage)
-                TextButton.icon(
-                  onPressed: () => setDialogState(() => removeImage = true),
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  label: const Text('Hapus Gambar', style: TextStyle(color: Colors.red)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nama')),
+                const SizedBox(height: 8),
+                TextField(controller: priceCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Harga')),
+                const SizedBox(height: 8),
+                TextField(controller: stokCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Stok')),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: kategori,
+                  items: ['Kebab', 'Burger'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  onChanged: (v) => setState(() => kategori = v!),
                 ),
-              if (hasNewImage)
-                TextButton.icon(
-                  onPressed: () => setDialogState(() {
-                    hasNewImage = false;
-                    pickedFileBytes = null;
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () async {
+                    final picker = ImagePicker();
+                    final res = await picker.pickImage(source: ImageSource.gallery);
+                    if (res != null) {
+                      if (kIsWeb) {
+                        pickedBytes = await res.readAsBytes();
+                      } else {
+                        pickedFile = File(res.path);
+                      }
+                      setState(() => removeImage = false);
+                    }
+                  },
+                  child: const Text('Ganti Gambar (opsional)'),
+                ),
+                const SizedBox(height: 8),
+                if (pickedBytes != null)
+                  Image.memory(pickedBytes!, height: 100, fit: BoxFit.cover)
+                else if (pickedFile != null)
+                  Image.file(pickedFile!, height: 100, fit: BoxFit.cover)
+                else if (!removeImage && product['image'].isNotEmpty)
+                  Image.network(product['image'], height: 100, fit: BoxFit.cover)
+                else
+                  Container(height: 100, color: Colors.grey[300], child: const Icon(Icons.image_not_supported, color: Colors.grey)),
+                TextButton(
+                  onPressed: () => setState(() {
+                    removeImage = true;
                     pickedFile = null;
-                    removeImage = false;
+                    pickedBytes = null;
                   }),
-                  icon: const Icon(Icons.cancel, color: Colors.orange),
-                  label: const Text('Batal Gambar Baru', style: TextStyle(color: Colors.orange)),
+                  child: const Text('Hapus Gambar', style: TextStyle(color: Colors.red)),
                 ),
-              const SizedBox(height: 8),
-              // Preview
-              if (pickedFileBytes != null)
-                ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(pickedFileBytes!, height: 100, fit: BoxFit.cover))
-              else if (pickedFile != null)
-                ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(pickedFile!, height: 100, fit: BoxFit.cover))
-              else if (removeImage)
-                Container(
-                  height: 100,
-                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(8)),
-                  child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.delete, color: Colors.red, size: 50),
-                    Text('Gambar Dihapus', style: TextStyle(color: Colors.red)),
-                  ]),
-                )
-              else if (product['image'].isNotEmpty)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(getPublicUrl(product['image']), height: 100, fit: BoxFit.cover, errorBuilder: (c, e, s) => Container(
-                    height: 100,
-                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(8)),
-                    child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 50),
-                  )),
-                )
-              else
-                Container(
-                  height: 100,
-                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 50),
-                ),
-            ]),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
             ElevatedButton(
               onPressed: () async {
-                final nama = nameController.text.trim();
-                final hargaStr = priceController.text.trim();
-                final stokStr = stokController.text.trim();
-                if (!_validateForm(nama, hargaStr, stokStr)) return;
-                final harga = double.parse(hargaStr);
-                final stok = int.parse(stokStr);
+                final nama = nameCtrl.text.trim();
+                final harga = double.tryParse(priceCtrl.text) ?? 0;
+                final stok = int.tryParse(stokCtrl.text) ?? 0;
+                if (nama.isEmpty || harga <= 0 || stok < 0) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('Data tidak valid')));
+                  return;
+                }
                 try {
-                  debugPrint(' Updating product ID: ${product['id']}'); // Debug
-                  String? finalImagePath = product['image'];
-                  if (removeImage) {
-                    finalImagePath = null;
-                    debugPrint(' Removing image in edit');
-                  } else if (hasNewImage) {
-                    String newFileName = pickedFile != null
-                        ? '${DateTime.now().millisecondsSinceEpoch}_${pickedFile!.path.split('/').last}'
-                        : '${DateTime.now().millisecondsSinceEpoch}.png';
-                    if (kIsWeb && pickedFileBytes != null) {
-                      final newPath = await produkService.uploadImageWeb(pickedFileBytes!, newFileName);
-                      if (newPath != null) finalImagePath = newPath;
-                    } else if (!kIsWeb && pickedFile != null) {
-                      final newPath = await produkService.uploadImage(pickedFile!, newFileName);
-                      if (newPath != null) finalImagePath = newPath;
-                    }
-                    if (finalImagePath == product['image']) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Gagal upload gambar baru, gambar lama dipertahankan')),
-                      );
-                    }
-                  }
-                  await produkService.updateProduk(product['id'].toString(), {
-                    'nama': nama,
-                    'harga': harga,
-                    'stok_saat_ini': stok, // FIX: Update stok
-                    'kategori': selectedCategory,
-                    'gambar_url': finalImagePath,
-                  });
-                  await loadProduk(); // Auto refresh
+                  await produkService.updateProdukWithImage(
+                    id: product['id'].toString(),
+                    nama: nama,
+                    harga: harga,
+                    stok: stok,
+                    kategori: kategori,
+                    imageFile: kIsWeb ? null : pickedFile,
+                    imageBytes: kIsWeb ? pickedBytes : null,
+                    removeImage: removeImage,
+                  );
+                  if (!mounted) return;
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Produk diupdate!')));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('Produk di-update')));
+                  await loadProduk();
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal update: $e')));
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text('Gagal update: $e')));
                 }
               },
-              child: const Text('Update'),
+              child: const Text('Simpan'),
             ),
           ],
         ),
@@ -412,12 +401,16 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
     );
   }
 
-  // DELETE: Hapus Produk
+  /* -------------------------------------------------- */
+  /*  D E L E T E   P R O D U K                        */
+  /* -------------------------------------------------- */
   void _showDeleteDialog(int index) {
     final product = allProducts[index];
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
+        scrollable: true,                 // ➜ dialog otomatis pakai SingleChildScrollView
+contentPadding: EdgeInsets.zero,  // ➜ kita kontrol sendiri padding-nya
         title: const Text('Konfirmasi Hapus', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
         content: Text('Yakin hapus "${product['name']}"?'),
         actions: [
@@ -427,11 +420,15 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
             onPressed: () async {
               try {
                 await produkService.deleteProduk(product['id'].toString());
-                await loadProduk(); // Auto refresh
+                if (!mounted) return;
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${product['name']} dihapus!')));
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text('${product['name']} dihapus!')));
+                await loadProduk();
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal hapus: $e')));
+                if (!mounted) return;
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text('Gagal hapus: $e')));
               }
             },
             child: const Text('Hapus', style: TextStyle(color: Colors.white)),
@@ -441,23 +438,29 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
     );
   }
 
+  /* -------------------------------------------------- */
+  /*  B U I L D                                        */
+  /* -------------------------------------------------- */
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7ECD3),
       appBar: AppBar(
-        title: const Text("Produk", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Produk', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFFFF9C00),
         elevation: 0,
         centerTitle: true,
         actions: [
-          IconButton(icon: const Icon(Icons.add, color: Colors.white), onPressed: _showAddDialog),
+          IconButton(
+            icon: const Icon(Icons.add, color: Colors.white),
+            onPressed: _showAddDialog,
+          ),
         ],
       ),
       drawer: Sidebar(
         onMenuTap: (menu) {
           Navigator.pop(context);
-          Navigator.pushReplacementNamed(context, "/$menu");
+          Navigator.pushReplacementNamed(context, '/$menu');
         },
       ),
       body: Padding(
@@ -470,12 +473,18 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
-                  hintText: "Search",
+                  hintText: 'Search',
                   prefixIcon: const Icon(Icons.search, color: Color(0xFFFF9C00)),
                   border: InputBorder.none,
                   hintStyle: TextStyle(color: Colors.grey[600]),
@@ -488,15 +497,28 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: TabBar(
                 controller: _tabController,
                 labelColor: const Color(0xFFFF9C00),
                 unselectedLabelColor: Colors.grey,
-                indicator: BoxDecoration(borderRadius: BorderRadius.circular(8), color: Colors.orange[100]),
+                indicator: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.orange[100],
+                ),
                 indicatorSize: TabBarIndicatorSize.tab,
-                tabs: const [Tab(text: "All"), Tab(text: "Kebab"), Tab(text: "Burger")],
+                tabs: const [
+                  Tab(text: 'All'),
+                  Tab(text: 'Kebab'),
+                  Tab(text: 'Burger'),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -525,7 +547,7 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
               physics: const AlwaysScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 0.75,
+                childAspectRatio: 0.62,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 15,
               ),
@@ -537,91 +559,67 @@ class _ProdukPageState extends State<ProdukPage> with SingleTickerProviderStateM
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 4))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                     border: Border.all(color: Colors.orange[100]!, width: 0.5),
                   ),
                   child: Column(
                     children: [
                       ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                        child: Container(
-                          height: 120,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(14),
+                        ),
+                        child: SizedBox(
+                          height: 100,
                           width: double.infinity,
                           child: _buildImageWidget(item['image']),
                         ),
                       ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item['name'],
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFFF9C00)),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['name'],
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFFF9C00),
                               ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Rp ${item['price']}",
-                                    style: const TextStyle(fontSize: 14, color: Colors.black87, fontWeight: FontWeight.w600),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    "Stok: ${item['stok']}",
-                                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                  ),
-                                ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Rp ${item['price']}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  GestureDetector(
-                                    onTap: () => _showEditDialog(globalIndex),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange[50],
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: const Color(0xFFFF9C00), width: 1),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.edit, size: 14, color: const Color(0xFFFF9C00)),
-                                          const SizedBox(width: 4),
-                                          const Text("Edit", style: TextStyle(fontSize: 11, color: Color(0xFFFF9C00))),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  GestureDetector(
-                                    onTap: () => _showDeleteDialog(globalIndex),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red[50],
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: Colors.red, width: 1),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.delete, size: 14, color: Colors.red),
-                                          const SizedBox(width: 4),
-                                          const Text("Delete", style: TextStyle(fontSize: 11, color: Colors.red)),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                            ),
+                            Text(
+                              'Stok: ${item['stok']}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _editButton(globalIndex),
+                                _deleteButton(globalIndex),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ],

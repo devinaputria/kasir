@@ -20,9 +20,9 @@ class AuthService {
         return {
           'success': true,
           'user': {
-            'id': response.user!.id,
-            'email': response.user!.email,
-            'role': role,
+             'id': response.user!.id,
+             'email': response.user!.email,
+             'role': role,
           },
         };
       } else {

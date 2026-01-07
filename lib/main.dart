@@ -29,7 +29,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
 
-      // ⭐ PENTING: mulai dari login route
+      // PENTING: mulai dari login route
       initialRoute: '/login',
 
       routes: {
